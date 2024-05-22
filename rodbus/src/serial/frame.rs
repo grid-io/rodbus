@@ -1,6 +1,6 @@
 use crate::common::buffer::ReadBuffer;
 use crate::common::frame::{
-    Frame, FrameDestination, FrameHeader, FrameInfo, FrameType, FunctionField,
+    Frame, FrameDestination, FrameHeader, FrameInfo, FrameRecords, FrameType, FunctionField,
 };
 use crate::common::function::FunctionCode;
 use crate::common::traits::Serialize;
@@ -219,7 +219,12 @@ pub(crate) fn format_rtu_pdu(
     cursor.write_u8(header.destination.value())?;
     cursor.write_u8(function.get_value())?;
     let start_pdu_body = cursor.position();
-    msg.serialize(cursor)?;
+    let mut records = FrameRecords::new();
+    msg.serialize(cursor, Some(&mut records))?;
+
+    if !records.records_empty() {
+        return Err(RequestError::FrameRecorderNotEmpty);
+    }
     let end_pdu_body = cursor.position();
     // Write the CRC
     let crc = CRC.checksum(cursor.get(start_frame..end_pdu_body).unwrap());
@@ -745,7 +750,11 @@ mod tests {
     }
 
     impl<'a> Serialize for MockMessage<'a> {
-        fn serialize(&self, cursor: &mut WriteCursor) -> Result<(), RequestError> {
+        fn serialize(
+            &self,
+            cursor: &mut WriteCursor,
+            records: Option<&mut FrameRecords>,
+        ) -> Result<(), RequestError> {
             for byte in &self.frame[2..self.frame.len() - 2] {
                 cursor.write_u8(*byte)?;
             }

@@ -133,14 +133,31 @@ impl<'a> Request<'a> {
                 // Note: This will require some changes to the FrameWriter =(
                 //
                 // You'll have to save the locations to the following fields:
+                // You'll have to save the locations to the following fields:
                 //  - More Follows
                 //  - Next Object Id
                 //  - Number of Objects
                 //
                 // And then write them AFTER writing the info objects
-                let device_information = DeviceIdentificationResponse::new(|| {
-                    handler.read_device_info(read.mei_code, read.dev_id, read.obj_id)
+
+                let device_information = DeviceIdentificationResponse::new(|object_id| {
+                    let base_id = if let Some(base_id) = read.obj_id {
+                        base_id
+                    } else {
+                        0
+                    };
+                    let request_offset = if let Some(object_id) = object_id {
+                        object_id
+                    } else {
+                        0
+                    };
+                    handler.read_device_info(
+                        read.mei_code,
+                        read.dev_id,
+                        Some(base_id + request_offset),
+                    )
                 });
+
                 writer.format_reply(header, function, &device_information, level)
             }
             Request::WriteSingleCoil(request) => {

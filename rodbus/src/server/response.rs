@@ -1,6 +1,6 @@
 use crate::exception::ExceptionCode;
+use crate::server::ServerDeviceInfo;
 use crate::types::{ReadBitsRange, ReadRegistersRange};
-use crate::DeviceInfo;
 
 pub(crate) struct BitWriter<T>
 where
@@ -37,16 +37,16 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct DeviceIdentificationResponse<T>
+pub(crate) struct DeviceIdentificationResponse<'a, T>
 where
-    T: Fn() -> Result<DeviceInfo, ExceptionCode>,
+    T: Fn(Option<u8>) -> Result<ServerDeviceInfo<'a>, ExceptionCode>,
 {
     pub(crate) getter: T,
 }
 
-impl<T> DeviceIdentificationResponse<T>
+impl<'a, T> DeviceIdentificationResponse<'a, T>
 where
-    T: Fn() -> Result<DeviceInfo, ExceptionCode>,
+    T: Fn(Option<u8>) -> Result<ServerDeviceInfo<'a>, ExceptionCode>,
 {
     pub(crate) fn new(getter: T) -> Self {
         Self { getter }

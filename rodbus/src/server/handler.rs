@@ -6,9 +6,15 @@ use crate::server::{WriteCoils, WriteRegisters};
 use crate::types::*;
 
 /// Type that the server will return in response to a read_device_info
+#[derive(Debug, PartialEq)]
 pub struct ServerDeviceInfo<'a> {
-    /// Conformity level the the server is willing to grant
+    /// Indicates the Area the Message came from (Basic, Regular, Extended)!
+    pub read_device_code: ReadDeviceCode,
+    /// Conformity level the server is willing to grant
     pub conformity_level: DeviceConformityLevel,
+    /// The ID of the current object, necessary to generate a valid response
+    /// but not part of the response!
+    pub current_object_id: u8,
     /// The ID of the next object, if available This will
     pub next_object_id: Option<u8>,
     /// The raw data for this object
@@ -56,7 +62,7 @@ pub trait RequestHandler: Send + 'static {
         _mei_code: MeiCode,
         _read_dev_id: ReadDeviceCode,
         _object_id: Option<u8>,
-    ) -> Result<DeviceInfo, ExceptionCode> {
+    ) -> Result<ServerDeviceInfo, ExceptionCode> {
         Err(ExceptionCode::IllegalFunction)
     }
 

@@ -35,6 +35,8 @@ pub enum RequestError {
     NoConnection,
     /// Task processing requests has been shutdown
     Shutdown,
+    /// Frame recorder was not in an empty state before trying to send the data!
+    FrameRecorderNotEmpty,
 }
 
 impl std::error::Error for RequestError {}
@@ -51,6 +53,10 @@ impl std::fmt::Display for RequestError {
             RequestError::ResponseTimeout => f.write_str("response timeout"),
             RequestError::NoConnection => f.write_str("no connection to server"),
             RequestError::Shutdown => f.write_str("channel shutdown"),
+            //TODO(Kay): We could give the user more information where they forgot to write the necessary data!
+            RequestError::FrameRecorderNotEmpty => {
+                f.write_str("frame recorder needs to be empty in order to send the message.")
+            }
         }
     }
 }
@@ -157,6 +163,15 @@ pub enum InvalidRange {
     CountTooLargeForType(u16, u16), // actual and limit
 }
 
+/// Errors that can be produced when the Frame Recorder is used incorrectly
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RecorderError {
+    ///Record Key already in use.
+    RecordKeyExists(&'static str),
+    ///Record Key not found.
+    RecordDoesNotExist(&'static str),
+}
+
 /// Errors that indicate faulty logic in the library itself if they occur
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InternalError {
@@ -170,6 +185,35 @@ pub enum InternalError {
     BadSeekOperation,
     /// Byte count would exceed maximum allowed size in the ADU of u8
     BadByteCount(usize),
+    /// A position with that name was already recorded.
+    RecordKeyExists(&'static str),
+    /// The recorded position was not found under the specified key.
+    RecordDoesNotExist(&'static str),
+    /// Attempted to write a value that would result in a Numeric overflow
+    RecordNumericOverflow,
+    /// Attempted to write a record beyond the range of the underlying buffer.
+    RecordWriteOverflow,
+    /// Attempted to seek to a Position larger than the length of the underlying buffer.
+    RecordBadSeek,
+}
+
+impl From<WriteError> for InternalError {
+    fn from(value: WriteError) -> Self {
+        match value {
+            WriteError::NumericOverflow => InternalError::RecordNumericOverflow,
+            WriteError::WriteOverflow { .. } => InternalError::RecordWriteOverflow,
+            WriteError::BadSeek { .. } => InternalError::RecordBadSeek,
+        }
+    }
+}
+
+impl From<RecorderError> for InternalError {
+    fn from(value: RecorderError) -> Self {
+        match value {
+            RecorderError::RecordKeyExists(key) => InternalError::RecordKeyExists(key),
+            RecorderError::RecordDoesNotExist(key) => InternalError::RecordDoesNotExist(key),
+        }
+    }
 }
 
 impl std::error::Error for InternalError {}
@@ -194,6 +238,27 @@ impl std::fmt::Display for InternalError {
             }
             InternalError::BadByteCount(size) => {
                 write!(f, "Byte count of in ADU {size} exceeds maximum size of u8")
+            }
+            InternalError::RecordKeyExists(key) => {
+                write!(f, "The key \"{key}\" is already stored inside the recorder")
+            }
+            InternalError::RecordDoesNotExist(key) => {
+                write!(f, "The position with the key \"{key}\" was never recorded")
+            }
+            InternalError::RecordNumericOverflow => {
+                write!(
+                    f,
+                    "Attempted to write a  recorded value that would result in a Numeric overflow"
+                )
+            }
+            InternalError::RecordWriteOverflow => {
+                write!(
+                    f,
+                    "Attempted to write a record beyond the range of the underlying buffer."
+                )
+            }
+            InternalError::RecordBadSeek => {
+                write!(f, "Attempted to seek to a Position larger than the length of the underlying buffer.")
             }
         }
     }
