@@ -35,7 +35,7 @@ pub(crate) enum BroadcastRequest<'a> {
 
 impl<'a> BroadcastRequest<'a> {
     // execute a broadcast request against the handler
-    pub(crate) fn execute<T: RequestHandler>(&self, handler: &mut T) {
+    pub(crate) fn execute(&self, handler: &dyn RequestHandler) {
         match self {
             BroadcastRequest::WriteSingleCoil(x) => {
                 let _ = handler.write_single_coil(*x);
@@ -83,7 +83,7 @@ impl<'a> Request<'a> {
     pub(crate) fn get_reply<'b>(
         &self,
         header: FrameHeader,
-        handler: &mut dyn RequestHandler,
+        handler: &dyn RequestHandler,
         writer: &'b mut FrameWriter,
         level: DecodeLevel,
     ) -> Result<&'b [u8], RequestError> {

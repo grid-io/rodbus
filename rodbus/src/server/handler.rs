@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::exception::ExceptionCode;
 use crate::server::{WriteCoils, WriteRegisters};
@@ -13,14 +13,14 @@ use crate::types::*;
 ///
 /// If an implementation returns a slice smaller than the requested range, this will result
 /// in [`ExceptionCode::ServerDeviceFailure`] being returned to the client.
-pub trait RequestHandler: Send + 'static {
+pub trait RequestHandler: Send + Sync + 'static {
     /// Moves a server handler implementation into a `Arc<Mutex<Box<ServerHandler>>>`
     /// suitable for passing to the server
-    fn wrap(self) -> Arc<Mutex<Box<Self>>>
+    fn wrap(self) -> Arc<Self>
     where
         Self: Sized,
     {
-        Arc::new(Mutex::new(Box::new(self)))
+        Arc::new(self)
     }
 
     /// Read single coil or return an ExceptionCode
@@ -44,22 +44,22 @@ pub trait RequestHandler: Send + 'static {
     }
 
     /// Write a single coil value
-    fn write_single_coil(&mut self, _value: Indexed<bool>) -> Result<(), ExceptionCode> {
+    fn write_single_coil(&self, _value: Indexed<bool>) -> Result<(), ExceptionCode> {
         Err(ExceptionCode::IllegalFunction)
     }
 
     /// Write a single coil value
-    fn write_single_register(&mut self, _value: Indexed<u16>) -> Result<(), ExceptionCode> {
+    fn write_single_register(&self, _value: Indexed<u16>) -> Result<(), ExceptionCode> {
         Err(ExceptionCode::IllegalFunction)
     }
 
     /// Write multiple coils
-    fn write_multiple_coils(&mut self, _values: WriteCoils) -> Result<(), ExceptionCode> {
+    fn write_multiple_coils(&self, _values: WriteCoils) -> Result<(), ExceptionCode> {
         Err(ExceptionCode::IllegalFunction)
     }
 
     /// Write multiple registers
-    fn write_multiple_registers(&mut self, _values: WriteRegisters) -> Result<(), ExceptionCode> {
+    fn write_multiple_registers(&self, _values: WriteRegisters) -> Result<(), ExceptionCode> {
         Err(ExceptionCode::IllegalFunction)
     }
 }
@@ -83,7 +83,7 @@ where
 }
 
 /// Server handler boxed inside a `Arc<Mutex>`.
-pub type ServerHandlerType<T> = Arc<Mutex<Box<T>>>;
+pub type ServerHandlerType<T> = Arc<T>;
 
 /// Type that hides the underlying map implementation
 /// and allows lookups of a [`RequestHandler`] from a [`UnitId`]
@@ -124,8 +124,8 @@ where
     }
 
     /// Retrieve a mutable reference to a [`RequestHandler`]
-    pub fn get(&mut self, id: UnitId) -> Option<&mut ServerHandlerType<T>> {
-        self.handlers.get_mut(&id)
+    pub fn get(&mut self, id: UnitId) -> Option<&T> {
+        self.handlers.get(&id).map(|x| x.as_ref())
     }
 
     /// Add a handler to the map
@@ -137,8 +137,8 @@ where
         self.handlers.insert(id, server)
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut ServerHandlerType<T>> {
-        self.handlers.values_mut()
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
+        self.handlers.values().map(|x| x.as_ref())
     }
 }
 

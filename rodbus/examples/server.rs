@@ -8,123 +8,32 @@ use tokio_util::codec::{FramedRead, LinesCodec};
 use rodbus::server::*;
 use rodbus::*;
 
-struct SimpleHandler {
-    coils: Vec<bool>,
-    discrete_inputs: Vec<bool>,
-    holding_registers: Vec<u16>,
-    input_registers: Vec<u16>,
-}
+struct SimpleHandler;
 
-impl SimpleHandler {
-    fn new(
-        coils: Vec<bool>,
-        discrete_inputs: Vec<bool>,
-        holding_registers: Vec<u16>,
-        input_registers: Vec<u16>,
-    ) -> Self {
-        Self {
-            coils,
-            discrete_inputs,
-            holding_registers,
-            input_registers,
-        }
-    }
 
-    fn coils_as_mut(&mut self) -> &mut [bool] {
-        self.coils.as_mut_slice()
-    }
 
-    fn discrete_inputs_as_mut(&mut self) -> &mut [bool] {
-        self.discrete_inputs.as_mut_slice()
-    }
 
-    fn holding_registers_as_mut(&mut self) -> &mut [u16] {
-        self.holding_registers.as_mut_slice()
-    }
-
-    fn input_registers_as_mut(&mut self) -> &mut [u16] {
-        self.input_registers.as_mut_slice()
-    }
-}
-
-// ANCHOR: request_handler
 impl RequestHandler for SimpleHandler {
-    fn read_coil(&self, address: u16) -> Result<bool, ExceptionCode> {
-        self.coils.get(address as usize).to_result()
-    }
 
-    fn read_discrete_input(&self, address: u16) -> Result<bool, ExceptionCode> {
-        self.discrete_inputs.get(address as usize).to_result()
-    }
 
     fn read_holding_register(&self, address: u16) -> Result<u16, ExceptionCode> {
-        self.holding_registers.get(address as usize).to_result()
+        Ok(address)
     }
 
     fn read_input_register(&self, address: u16) -> Result<u16, ExceptionCode> {
-        self.input_registers.get(address as usize).to_result()
+        Ok(address)
     }
 
-    fn write_single_coil(&mut self, value: Indexed<bool>) -> Result<(), ExceptionCode> {
-        tracing::info!(
-            "write single coil, index: {} value: {}",
-            value.index,
-            value.value
-        );
-
-        if let Some(coil) = self.coils.get_mut(value.index as usize) {
-            *coil = value.value;
-            Ok(())
-        } else {
-            Err(ExceptionCode::IllegalDataAddress)
-        }
+    fn write_single_register(&self, _value: Indexed<u16>) -> Result<(), ExceptionCode> {
+        Ok(())
     }
 
-    fn write_single_register(&mut self, value: Indexed<u16>) -> Result<(), ExceptionCode> {
-        tracing::info!(
-            "write single register, index: {} value: {}",
-            value.index,
-            value.value
-        );
-
-        if let Some(reg) = self.holding_registers.get_mut(value.index as usize) {
-            *reg = value.value;
-            Ok(())
-        } else {
-            Err(ExceptionCode::IllegalDataAddress)
-        }
+    fn write_multiple_coils(&self, _values: WriteCoils) -> Result<(), ExceptionCode> {
+        Ok(())
     }
 
-    fn write_multiple_coils(&mut self, values: WriteCoils) -> Result<(), ExceptionCode> {
-        tracing::info!("write multiple coils {:?}", values.range);
-
-        let mut result = Ok(());
-
-        for value in values.iterator {
-            if let Some(coil) = self.coils.get_mut(value.index as usize) {
-                *coil = value.value;
-            } else {
-                result = Err(ExceptionCode::IllegalDataAddress)
-            }
-        }
-
-        result
-    }
-
-    fn write_multiple_registers(&mut self, values: WriteRegisters) -> Result<(), ExceptionCode> {
-        tracing::info!("write multiple registers {:?}", values.range);
-
-        let mut result = Ok(());
-
-        for value in values.iterator {
-            if let Some(reg) = self.holding_registers.get_mut(value.index as usize) {
-                *reg = value.value;
-            } else {
-                result = Err(ExceptionCode::IllegalDataAddress)
-            }
-        }
-
-        result
+    fn write_multiple_registers(&self, _values: WriteRegisters) -> Result<(), ExceptionCode> {
+        Ok(())
     }
 }
 // ANCHOR_END: request_handler
@@ -168,8 +77,8 @@ async fn run_tcp() -> Result<(), Box<dyn std::error::Error>> {
 
     // ANCHOR: tcp_server_create
     let server = rodbus::server::spawn_tcp_server_task(
-        1,
-        "127.0.0.1:502".parse()?,
+        1024,
+        "0.0.0.0:502".parse()?,
         map,
         AddressFilter::Any,
         DecodeLevel::default(),
@@ -207,8 +116,8 @@ async fn run_tls(tls_config: TlsServerConfig) -> Result<(), Box<dyn std::error::
 
     // ANCHOR: tls_server_create
     let server = rodbus::server::spawn_tls_server_task_with_authz(
-        1,
-        "127.0.0.1:802".parse()?,
+        512,
+        "0.0.0.0:502".parse()?,
         map,
         ReadOnlyAuthorizationHandler::create(),
         tls_config,
@@ -226,8 +135,7 @@ fn create_handler() -> (
     ServerHandlerMap<SimpleHandler>,
 ) {
     // ANCHOR: handler_map_create
-    let handler =
-        SimpleHandler::new(vec![false; 10], vec![false; 10], vec![0; 10], vec![0; 10]).wrap();
+    let handler = SimpleHandler.wrap();
 
     // map unit ids to a handler for processing requests
     let map = ServerHandlerMap::single(UnitId::new(1), handler.clone());
@@ -271,51 +179,13 @@ fn get_ca_chain_config() -> Result<TlsServerConfig, Box<dyn std::error::Error>> 
 }
 
 async fn run_server(
-    mut server: ServerHandle,
-    handler: ServerHandlerType<SimpleHandler>,
+    _server: ServerHandle,
+    _handler: ServerHandlerType<SimpleHandler>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = FramedRead::new(tokio::io::stdin(), LinesCodec::new());
     loop {
         match reader.next().await.unwrap()?.as_str() {
             "x" => return Ok(()),
-            "ed" => {
-                // enable decoding
-                server
-                    .set_decode_level(DecodeLevel::new(
-                        AppDecodeLevel::DataValues,
-                        FrameDecodeLevel::Header,
-                        PhysDecodeLevel::Length,
-                    ))
-                    .await?;
-            }
-            "dd" => {
-                // disable decoding
-                server.set_decode_level(DecodeLevel::nothing()).await?;
-            }
-            "uc" => {
-                let mut handler = handler.lock().unwrap();
-                for coil in handler.coils_as_mut() {
-                    *coil = !*coil;
-                }
-            }
-            "udi" => {
-                let mut handler = handler.lock().unwrap();
-                for discrete_input in handler.discrete_inputs_as_mut() {
-                    *discrete_input = !*discrete_input;
-                }
-            }
-            "uhr" => {
-                let mut handler = handler.lock().unwrap();
-                for holding_register in handler.holding_registers_as_mut() {
-                    *holding_register += 1;
-                }
-            }
-            "uir" => {
-                let mut handler = handler.lock().unwrap();
-                for input_register in handler.input_registers_as_mut() {
-                    *input_register += 1;
-                }
-            }
             _ => println!("unknown command"),
         }
     }

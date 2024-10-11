@@ -211,7 +211,7 @@ where
                 // get the reply data (or exception reply)
                 let reply: &[u8] = request.get_reply(
                     frame.header,
-                    handler.lock().unwrap().as_mut(),
+                    handler,
                     &mut self.writer,
                     self.decode,
                 )?;
@@ -222,8 +222,8 @@ where
                     tracing::warn!("broadcast is not supported for {}", function);
                 }
                 Some(request) => {
-                    for handler in self.handlers.iter_mut() {
-                        request.execute(handler.lock().unwrap().as_mut());
+                    for handler in self.handlers.iter() {
+                        request.execute(handler);
                     }
                 }
             },
